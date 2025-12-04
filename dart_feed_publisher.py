@@ -34,3 +34,23 @@ class zmqgtfspublisher:
         alert_bytes = feed.SerializeToString()
         self.socket.send(alert_bytes)
         print(f"Sent GTFS-RT alert: {trip_id} at {stop_id}")
+    def send_spot_alert(self, delay_minutes, lat, lng):
+        agency_tz = pytz.timezone('America/Chicago')
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.datetime.now(agency_tz).timestamp())
+        entity = feed.entity.add()
+        entity.id = f"at_grade_crossing"
+        entity.lat = lat
+        entity.lng = lng
+        entity.alert.cause = gtfs_realtime_pb2.Alert.OTHER_CAUSE
+        entity.alert.effect = gtfs_realtime_pb2.Alert.MINOR_DELAYS
+        header = entity.alert.header_text.translation.add()
+        header.text = f"Delay: {delay_minutes} min"
+        description = entity.alert.description_text.translation.add()
+        description.text = f"grade cross for {delay_minutes} min"
+        active_period = entity.alert.active_period.add()
+        active_period.start = int(datetime.datetime.now(agency_tz).timestamp())
+        active_period.end = int((datetime.datetime.now(agency_tz) + timedelta(hours=1)).timestamp())
+        alert_bytes = feed.SerializeToString()
+        self.socket.send(alert_bytes)

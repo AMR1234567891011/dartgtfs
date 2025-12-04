@@ -18,8 +18,7 @@ class gtfs_schedule:
     zmq_addr = None
     gtfs_publisher = None
     
-    
-    def __init__(self, gtfs_static_path= "./google_transit_new", zmq_addr="tcp://127.0.0.1:5555", zmq_pub_addr="tcp://0.0.0.0:5556"):
+    def __init__(self, gtfs_static_path= "./google_transit_new", zmq_addr="tcp://127.0.0.1:5555", zmq_pub_addr="tcp://0.0.0.0:5556", spot=None):
         self.gtfs_publisher = zmqgtfspublisher(zmq_pub_addr)
         self.gtfs_static_path = gtfs_static_path
         self.zmq_addr = zmq_addr
@@ -51,7 +50,11 @@ class gtfs_schedule:
                 self.train_stop_times[trip_id] = stops_list
                 self.train_stop_times[trip_id] = gtfs_to_dated(stops_list, datetime.today().strftime('%Y%m%d'))
         if self.zmq_setup():
-            self.zmq_poll()
+            if not spot:
+                self.zmq_poll()
+            else:
+                self.spot = spot
+                self.spot_poll()
     def zmq_setup(self):
         try:
             self.context = zmq.Context()
@@ -62,6 +65,20 @@ class gtfs_schedule:
         except zmq.ZMQError as e:
             print(f"Failed to connect to port 5555: {e}")
             return False
+    def spot_poll(self):#poll a lng, lat pair and see if trains are within some distance
+        spot_lat,spot_lng,rad = self.spot
+        while True:
+            response = self.socket.recv_json()
+            ts, trip_id, stop_id, lat, lng, vehicle_id = response['timestamp'], int(response['trip']['id']), int(response['stop']['id']), response['coordinate']['lat'], response['coordinate']['lng'], response['id']
+            if trip_id not in self.train_stop_times:
+                continue
+            if stop_id not in self.stops:
+                continue
+            if vehicle_id not in self.vehicles:
+                self.vehicles[vehicle_id] = {'trip_id': trip_id, 'stops': set()}
+            dist = distance(spot_lat, spot_lng, lat, lng)
+            if dist <= rad:
+                self.gtfs_publisher.send_spot_alert(dist // 30 + 3, lat, lng)
     def zmq_poll(self):
         while True:
             response = self.socket.recv_json()
@@ -125,12 +142,17 @@ def gtfs_to_dated(trip_stop_times, service_date, reference_day_of_week=None):
             'departure_time': departure_dt.isoformat()
         })
     return result
-def get_minute_diff(ts1_str, ts2_str):
-    """Get minute difference between two ISO format timestamps"""
-    ts1 = datetime.fromisoformat(ts1_str.replace('Z', '+00:00'))
-    ts2 = datetime.fromisoformat(ts2_str.replace('Z', '+00:00'))
-    return (ts1 - ts2).total_seconds() / 60
-def distance(lat1, lon1, lat2, lon2):
+def get_minute_diff(ts1_str: str, ts2_str: str) -> int:
+    agency_tz = pytz.timezone('America/Chicago')
+    def parse_ts(ts_str):
+        if ts_str.endswith('Z'):
+            return datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+        return datetime.fromisoformat(ts_str)
+    ts1 = parse_ts(ts1_str).astimezone(agency_tz.utc)
+    ts2 = parse_ts(ts2_str).astimezone(agency_tz.utc)
+    diff = ts1 - ts2
+    return int(abs(diff.total_seconds()) / 60)
+def distance(lat1, lon1, lat2, lon2): #haversine
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
@@ -139,4 +161,8 @@ def distance(lat1, lon1, lat2, lon2):
     R = 6371000
     return R * c
 ## Runnning the stuff down here
+# WATCH_LAT = 32
+# WATCH_LNG = -96
+# RADIUS_METERS = 500
+# schedule = gtfs_schedule(spot=(WATCH_LAT, WATCH_LNG, RADIUS_METERS))
 schedule = gtfs_schedule()

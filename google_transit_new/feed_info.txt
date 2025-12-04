@@ -1,2 +1,0 @@
-feed_publisher_name,feed_publisher_url,feed_lang,feed_version,feed_start_date,feed_end_date,feed_contact_url
-DALLAS AREA RAPID TRANSIT,https://www.dart.org,en,V661-205-207-20251027,20251027,20260201,https://www.dart.org/contact-us
