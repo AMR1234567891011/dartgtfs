@@ -1,0 +1,9 @@
+# dartgtfs
+
+This project builds a complete pipeline for generating GTFS-Realtime style alerts for DART Light Rail using only publicly available static GTFS data and live vehicle location data obtained through scraping. DART does not publish a public GTFS-Realtime feed, so this project reconstructs one by combining schedule information with real-time train positions.
+
+The system loads DART’s static GTFS dataset (routes, stops, trips, calendars, and stop times), filters for rail routes, and converts stop-time entries into concrete timezone-aware timestamps. Live vehicle pings are received over ZeroMQ from a separate scraper process. Each incoming vehicle message is matched to its scheduled trip and next stop. The system calculates the vehicle’s distance to that stop and determines whether it has arrived late, early, or on time. When a stop arrival is detected, the system generates either an on-time or delayed alert based on the difference between the scheduled arrival and the real timestamp.
+
+Alerts are published as GTFS-Realtime feed messages using the official protobuf format. They are broadcast over a ZeroMQ PUB socket so that any number of clients can subscribe and process them. In addition to trip-delay alerts, the system supports a “spot alert” mode that emits alerts whenever a train enters a defined radius around a specified latitude/longitude pair, which is useful for geofenced crossings or targeted monitoring.
+
+The repository includes everything needed to run the processor inside Docker, including the GTFS loader, the alert generator, the ZMQ publisher, and supporting utilities. The overall purpose of the project is to provide a reproducible, self-hosted, real-time feed that mirrors what a true GTFS-Realtime service for DART would provide, enabling monitoring, research, data analysis, or integration into external applications.
